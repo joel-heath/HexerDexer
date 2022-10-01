@@ -68,33 +68,55 @@ public class LoopStream : WaveStream
         return totalBytesRead;
     }
 }
+public class WavePlayer
+{
+    WaveFileReader Reader;
+    public WaveChannel32 Channel { get; set; }
 
+    string FileName { get; set; }
+
+    public WavePlayer(string FileName)
+    {
+        this.FileName = FileName;
+        Reader = new WaveFileReader(FileName);
+        var loop = new LoopStream(Reader);
+        Channel = new WaveChannel32(loop) { PadWithZeroes = false };
+    }
+
+    public void Dispose()
+    {
+        if (Channel != null)
+        {
+            Channel.Dispose();
+            Reader.Dispose();
+        }
+    }
+
+}
 public class AudioEngine
 {
     private static WaveOutEvent? MusicOutputDevice;
-    public static void PlayMusic(string audioLocation)
+    public static void PlayMusic(string audioLocation) // Only one music plays at a time
     {
         WaveFileReader reader = new WaveFileReader(audioLocation);
         LoopStream looper = new LoopStream(reader);
         MusicOutputDevice = new WaveOutEvent();
-        MusicOutputDevice.Init(looper);
+        MusicOutputDevice.Init(looper);             // And it loops
         MusicOutputDevice.Play();
     }
-    public static void StopMusic()
+    public static void StopMusic() // It is stopped with this function
     {
         MusicOutputDevice?.Stop();
         MusicOutputDevice?.Dispose();
         MusicOutputDevice = null;
     }
-
-
-    public static WaveOutEvent PlaySound(string audioLocation)
+    public static WaveOutEvent PlaySound(string audioLocation) // Sounds are one-off
     {
         WaveFileReader audioFile = new WaveFileReader(audioLocation);
         WaveOutEvent outputDevice = new WaveOutEvent();
         outputDevice.Init(audioFile);
         outputDevice.Play();
-        return outputDevice;
+        return outputDevice; // And are manually stopped & disposed of after
     }
 }
 
@@ -335,9 +357,24 @@ class Program
         }
     }
 
+    static string ReadStr(int xCoord = -1, int yCoord = -1, int maxLength = -1)
+    {
+        while (true)
+        {
+            Print("> ", newLines: 0, x: xCoord, y: yCoord);
+            string uInput = ReadChars();
+            int len = uInput.Length;
+            if (0 < len && len <= maxLength && maxLength != -1) // insert more logical checks like is alphanumeric
+            {
+                return uInput;
+            }
+            else
+            {
+                MainConsole.Refresh();
+            }
+        }
+    }
 
-
-    
 
 
     static void HexToDec()
@@ -412,13 +449,116 @@ class Program
         return;
     }
 
+
+
+    static void DecToHex()
+    {
+        string nums = "0123456789ABCDEF";
+        Random rand = new Random();
+
+        List<WavePlayer> Music = new List<WavePlayer>();
+        DirectSoundOut audioOutput = new DirectSoundOut();
+
+        string[] tracks = new string[] { "001-guitar.wav",
+                                         "002-bass.wav",
+                                         "003-tambourine.wav",
+                                         "004-atmpospherics.wav",
+                                         "005-drums.wav" };
+        foreach (string track in tracks)
+        {
+            Music.Add(new WavePlayer(track));
+        }
+
+        var mixer = new MixingWaveProvider32(Music.Select(c => c.Channel));
+        audioOutput.Init(mixer);
+        audioOutput.Play();
+
+        Music[0].Channel.Volume = 0.5f;
+        Music[1].Channel.Volume = 0;
+        Music[2].Channel.Volume = 0;
+        Music[3].Channel.Volume = 0;
+        Music[4].Channel.Volume = 0;
+
+        int musicCount = 1;
+
+        bool? correct = null;
+        int dec; char hex;
+        int lastDec = 0; char lastHex = '0';
+        int score = 0; int totalQuestions = 0; int percent = 0;
+        char attempt = '0';
+        bool GameLoop = true;
+        WaveOutEvent? sfx = null;
+        Console.Clear();
+
+
+        while (GameLoop)
+        {
+            MainConsole.Clear();
+
+            for (int i = 0; i < 5; i++)
+            {
+                Music[i].Channel.Volume = (i < musicCount) ? 0.2f : 0;
+            }
+
+            if (rand.Next(0, 10) < 9) { dec = rand.Next(10, 16); } // 90% chance of hard den digit
+            else { dec = rand.Next(0, 10); }                       // 10% chance of easy den digit
+            hex = nums[dec];
+
+            Print($@"§(7)What is §(9){dec}§(7) in hexadecimal?", 4);
+
+            if (correct.HasValue) // it mustn't give a score until first question has been answered.
+            {
+                if (correct.Value)
+                {
+                    score++;
+                    sfx = AudioEngine.PlaySound("correct.wav");
+                    Print($@"§(10)Correct! §(9){lastDec} §(10)= §(9){lastHex}§(10).", 2);
+                }
+                else
+                {
+                    sfx = AudioEngine.PlaySound("incorrect.wav");
+                    Print($@"§(12)Incorrect. §(9){lastDec} §(12)= §(9){lastHex}§(12). (You entered {attempt})", 2);
+                }
+
+                percent = score * 100 / totalQuestions;
+                Print($@"§(7)Score: ", 0);
+
+                if (percent > 74)
+                {
+                    Print($@"§(10){score} / {totalQuestions} ({percent}%)§(7).", 2);
+                }
+                else if (percent > 49)
+                {
+                    Print($@"§(6){score} / {totalQuestions} ({percent}%)§(7).", 2);
+                }
+                else
+                {
+                    Print($@"§(12){score} / {totalQuestions} ({percent}%)§(7).", 2);
+                }
+            }
+
+            try { attempt = ReadStr(0, 2, 1).ToUpper()[0]; }
+            catch (EscapeException) { audioOutput.Stop(); audioOutput.Dispose(); GameLoop = false; }
+
+            if (attempt == hex) { correct = true; musicCount = (musicCount < 6) ? musicCount + 1 : musicCount; }
+            else { correct = false; musicCount = 1; }
+
+            totalQuestions++;
+            lastDec = dec;
+            lastHex = hex;
+            if (sfx != null) { sfx.Stop(); sfx.Dispose(); }
+        }
+        return;
+    }
+
+
     static void MainMenu()
     {
         MainConsole.Clear();
 
         Print("HexerDexer", 2);
-        Print("1 §(9)Hex-Denary");
-        Print("2 §(10)Denary-Hex", 2);
+        Print("1 §(9)Hex-Dex");
+        Print("2 §(10)Dex-Hex", 2);
 
         int choice = 0;
         try { choice = ReadInt(); }
@@ -427,7 +567,7 @@ class Program
         switch (choice)
         {
             case 1: HexToDec(); break;
-            case 2: break;
+            case 2: DecToHex(); break;
         }
     }
     
