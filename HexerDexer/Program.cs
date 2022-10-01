@@ -117,13 +117,55 @@ public class AudioEngine
         return audioFile;
     }
 }
-
+/*
 static class Globals
 {
     public static List<ConsoleMessage> ConsoleHistory = new List<ConsoleMessage>();
 }
+*/
 class Program
 {
+    public class ConsoleLogs 
+    {
+        private List<ConsoleMessage> ConsoleHistory = new List<ConsoleMessage>();
+        public List<ConsoleMessage> History { get { return ConsoleHistory; } }
+        public void Log(ConsoleMessage message) { ConsoleHistory.Add(message); }
+        public void Clear() { ConsoleHistory.Clear(); }
+        public void Remove(int x, int y)
+        {
+            ConsoleMessage? removeMe = new ConsoleMessage { XVal = -1 }; // fake item that can't exist, so nothing will be removed if item is not found
+            foreach (ConsoleMessage log in ConsoleHistory)
+            {
+                if (log.YVal == y && log.XVal == x) { removeMe = log; } // if item is found remove it
+            }
+            ConsoleHistory.Remove(removeMe);
+        }
+        public void Shift(int x, int y, int distance)
+        {
+            foreach (ConsoleMessage log in ConsoleHistory)
+            {
+                if (log.YVal == y && log.XVal > x)
+                {
+                    log.XVal += distance; // Move any character to the right of starting point by the distance
+                }
+            }
+        }
+    }
+    static class MainConsole // special case of a ConsoleLogs(): this is the live one that is printed to the screen
+    {
+        private static ConsoleLogs TheConsole = new ConsoleLogs();
+        public static List<ConsoleMessage> History { get { return TheConsole.History; } }
+        public static void Log(ConsoleMessage message)
+        {
+            TheConsole.Log(message);
+        }
+        public static void Clear()
+        {
+            TheConsole.Clear();
+            Console.Clear();
+        }
+
+    }
     public class ConsoleMessage
     {
         public string Contents { get; set; } = string.Empty;
@@ -132,11 +174,11 @@ class Program
         public int XVal { get; set; } = 0;
         public int YVal { get; set; } = 0;
     }
-    public static void ResetChat(List<ConsoleMessage>? extraMessages = null)
+    public static void RefreshConsole(List<ConsoleMessage>? extraMessages = null)
     {
         Console.Clear();
-
-        List<ConsoleMessage> messages = Globals.ConsoleHistory.ToList();
+        
+        List<ConsoleMessage> messages = MainConsole.History.ToList();
         if (extraMessages != null)
         {
             foreach (ConsoleMessage message in extraMessages) { messages.Add(message); }
@@ -156,7 +198,8 @@ class Program
         if (x == -1) { x = Console.CursorLeft; }
         if (y == -1) { y = Console.CursorTop; }
         // Log the chat message so it can be re-written if the chat is updated or reset
-        Globals.ConsoleHistory.Add(new ConsoleMessage() { Contents = contents, NewLines = newLines, Color = color, XVal = x, YVal = y });
+        //Globals.ConsoleHistory.Add(new ConsoleMessage() { Contents = contents, NewLines = newLines, Color = color, XVal = x, YVal = y });
+        MainConsole.Log(new ConsoleMessage() { Contents = contents, NewLines = newLines, Color = color, XVal = x, YVal = y });
 
         Console.ForegroundColor = color;
         Console.SetCursorPosition(x, y);
@@ -262,7 +305,7 @@ class Program
                         else if (message.XVal == xPos) { removeMe = message; } // Find character to remove
                     }
                     inputString.Remove(removeMe);
-                    ResetChat(inputString);
+                    RefreshConsole(inputString);
                 }
                 break;
 
@@ -274,7 +317,7 @@ class Program
                 }
                 inputString.Add(new ConsoleMessage() { Contents = letter, XVal = xPos, YVal = yPos, NewLines = 0 });
                 xPos++;
-                ResetChat(inputString);                          // Re-write screen including inputted letter
+                RefreshConsole(inputString);                          // Re-write screen including inputted letter
                                                                  //Console.SetCursorPosition(x, y); break;
                 break;
         }
@@ -317,7 +360,7 @@ class Program
             }
             else
             {
-                ResetChat();
+                RefreshConsole();
             }
         }
     }
@@ -340,8 +383,7 @@ class Program
 
         while (GameLoop)
         {
-            Globals.ConsoleHistory.Clear();
-            ResetChat();
+            MainConsole.Clear();
 
             if (rand.Next(0,10) < 9) { den = rand.Next(10, 16); } // 90% chance of hard hex digit
             else                     { den = rand.Next(0,  10); } // 10% chance of easy hex digit
@@ -360,7 +402,7 @@ class Program
                 else
                 {
                     AudioEngine.PlaySound("incorrect.wav");
-                    SPrint($@"§(12)Incorrect. §(9){lastHex} §(12)= §(9){lastDen}§(12).", 2);
+                    SPrint($@"§(12)Incorrect. §(9){lastHex} §(12)= §(9){lastDen}§(12). (You entered {attempt})", 2);
                 }
 
                 percent = score * 100 / totalQuestions;
@@ -396,8 +438,7 @@ class Program
     }
     static void MainMenu()
     {
-        Console.Clear();
-        Globals.ConsoleHistory.Clear();
+        MainConsole.Clear();
 
         SPrint("HexerDexer", 2);
         SPrint("1 §(9)Hex-Denary");
