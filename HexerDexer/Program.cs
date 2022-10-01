@@ -18,7 +18,6 @@ public class LoopStream : WaveStream
     WaveStream sourceStream;
 
     /// Creates a new Loop stream
-
     public LoopStream(WaveStream sourceStream)
     {
         this.sourceStream = sourceStream;
@@ -72,63 +71,49 @@ public class LoopStream : WaveStream
 
 public class AudioEngine
 {
-    private static WaveOutEvent? waveOut;
+    private static WaveOutEvent? MusicOutputDevice;
     public static void PlayMusic(string audioLocation)
     {
         WaveFileReader reader = new WaveFileReader(audioLocation);
         LoopStream looper = new LoopStream(reader);
-        waveOut = new WaveOutEvent();
-        waveOut.Init(looper);
-        waveOut.Play();
+        MusicOutputDevice = new WaveOutEvent();
+        MusicOutputDevice.Init(looper);
+        MusicOutputDevice.Play();
     }
     public static void StopMusic()
     {
-        waveOut?.Stop();
-        waveOut?.Dispose();
-        waveOut = null;
+        MusicOutputDevice?.Stop();
+        MusicOutputDevice?.Dispose();
+        MusicOutputDevice = null;
     }
 
-    /*
-    private static WaveOutEvent MusicOutputDevice = new WaveOutEvent();
-    public static AudioFileReader? PlayMusic(string audioLocation, bool wait = false, bool loop = true)
-    {
-        AudioFileReader audioFile = new AudioFileReader(audioLocation);
-        MusicOutputDevice.Init(audioFile);
-        MusicOutputDevice.Play();
 
-        if (wait)
-        {
-            while (MusicOutputDevice.PlaybackState == PlaybackState.Playing)
-            {
-                Thread.Sleep(1000);
-            }
-            audioFile.Dispose();
-            return null;
-        }
-        return audioFile;
-    }
-    */
-    public static AudioFileReader PlaySound(string audioLocation)
+    public static WaveOutEvent PlaySound(string audioLocation)
     {
-        AudioFileReader audioFile = new AudioFileReader(audioLocation);
+        WaveFileReader audioFile = new WaveFileReader(audioLocation);
         WaveOutEvent outputDevice = new WaveOutEvent();
         outputDevice.Init(audioFile);
         outputDevice.Play();
-        return audioFile;
+        return outputDevice;
     }
 }
-/*
-static class Globals
-{
-    public static List<ConsoleMessage> ConsoleHistory = new List<ConsoleMessage>();
-}
-*/
+
+
 class Program
 {
-    public class ConsoleLogs 
+    public class ConsoleMessage
+    {
+        public string Contents { get; set; } = string.Empty;
+        public ConsoleColor Color { get; set; } = ConsoleColor.White;
+        public int NewLines { get; set; } = 1;
+        public int XVal { get; set; } = 0;
+        public int YVal { get; set; } = 0;
+    }
+    public class ConsoleLogs
     {
         private List<ConsoleMessage> ConsoleHistory = new List<ConsoleMessage>();
         public List<ConsoleMessage> History { get { return ConsoleHistory; } }
+        public int Count { get { return ConsoleHistory.Count; } }
         public void Log(ConsoleMessage message) { ConsoleHistory.Add(message); }
         public void Clear() { ConsoleHistory.Clear(); }
         public void Remove(int x, int y)
@@ -144,7 +129,7 @@ class Program
         {
             foreach (ConsoleMessage log in ConsoleHistory)
             {
-                if (log.YVal == y && log.XVal > x)
+                if (log.YVal == y && log.XVal >= x)
                 {
                     log.XVal += distance; // Move any character to the right of starting point by the distance
                 }
@@ -153,7 +138,7 @@ class Program
     }
     static class MainConsole // special case of a ConsoleLogs(): this is the live one that is printed to the screen
     {
-        private static ConsoleLogs TheConsole = new ConsoleLogs();
+        private static readonly ConsoleLogs TheConsole = new ConsoleLogs();
         public static List<ConsoleMessage> History { get { return TheConsole.History; } }
         public static void Log(ConsoleMessage message)
         {
@@ -164,64 +149,57 @@ class Program
             TheConsole.Clear();
             Console.Clear();
         }
-
-    }
-    public class ConsoleMessage
-    {
-        public string Contents { get; set; } = string.Empty;
-        public ConsoleColor Color { get; set; } = ConsoleColor.White;
-        public int NewLines { get; set; } = 1;
-        public int XVal { get; set; } = 0;
-        public int YVal { get; set; } = 0;
-    }
-    public static void RefreshConsole(List<ConsoleMessage>? extraMessages = null)
-    {
-        Console.Clear();
-        
-        List<ConsoleMessage> messages = MainConsole.History.ToList();
-        if (extraMessages != null)
+        public static void Refresh(ConsoleLogs? extraMessages = null)
         {
-            foreach (ConsoleMessage message in extraMessages) { messages.Add(message); }
-        }
+            Console.Clear();
 
-        foreach (var entry in messages)
+            List<ConsoleMessage> messages = History.ToList();
+
+            if (extraMessages != null)
+            {
+                foreach (ConsoleMessage message in extraMessages.History) { messages.Add(message); }
+            }
+
+            foreach (var entry in messages)
+            {
+                Console.ForegroundColor = entry.Color;                              // Set message color
+                Console.SetCursorPosition(entry.XVal, entry.YVal);                  // Set x & y cursor co-ordinates
+                Console.Write(entry.Contents);                                      // Write message contents
+                for (int i = 0; i < entry.NewLines; i++) { Console.WriteLine(""); } // Set-up any new lines required
+            }
+        }
+        public static void Write(string contents, int newLines = 1, ConsoleColor color = ConsoleColor.White, int x = -1, int y = -1)
         {
-            Console.ForegroundColor = entry.Color; // Set message color
-            Console.SetCursorPosition(entry.XVal, entry.YVal); // Set x & y cursor co-ordinates
-            Console.Write(entry.Contents); // Write message contents
-            for(int i = 0; i < entry.NewLines; i++) { Console.WriteLine(""); } // Set-up any new lines required
+            // -1 x & y is default code for current cursor position.
+            if (x == -1) { x = Console.CursorLeft; }
+            if (y == -1) { y = Console.CursorTop; }
+
+            // Log the chat message so it can be re-written if the chat is updated or reset
+            Log(new ConsoleMessage() { Contents = contents, NewLines = newLines, Color = color, XVal = x, YVal = y });
+
+            Console.ForegroundColor = color;
+            Console.SetCursorPosition(x, y);
+            Console.Write(contents);
+            for (int i = 0; i < newLines; i++) { Console.WriteLine(""); }
         }
     }
-    public static void Print(string contents, int newLines = 1, ConsoleColor color = ConsoleColor.White, int x = -1, int y = -1 )
-    {
-        // -1 x & y is default code for current cursor position.
-        if (x == -1) { x = Console.CursorLeft; }
-        if (y == -1) { y = Console.CursorTop; }
-        // Log the chat message so it can be re-written if the chat is updated or reset
-        //Globals.ConsoleHistory.Add(new ConsoleMessage() { Contents = contents, NewLines = newLines, Color = color, XVal = x, YVal = y });
-        MainConsole.Log(new ConsoleMessage() { Contents = contents, NewLines = newLines, Color = color, XVal = x, YVal = y });
 
-        Console.ForegroundColor = color;
-        Console.SetCursorPosition(x, y);
-        Console.Write(contents);
-        for (int i=0; i<newLines; i++) { Console.WriteLine(""); }
-    }
-
-    // Style print (built-in color support) §(15) = White (default) §(0) = Black  || See Colors.md for codes ||
-    public static void SPrint(string contents, int newLines = 1, int x = -1, int y = -1)
+    // Print with colors  §(15) = White [default] §(0) = Black  || See Colors.md for codes ||
+    public static void Print(string contents, int newLines = 1, int x = -1, int y = -1)
     {
         ConsoleColor color = ConsoleColor.White;
         Regex rx = new Regex(@"\§\((\d+)\)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         string[] texts = rx.Split(contents);
+        // texts is a string array where every even index is a string and odd index is a color code
 
         for (int i = 0; i < texts.Length; i++)
         {
-            // If it's an even index then its text to be Printed
+            // If it's an even index then its text to be Written
             if (i % 2 == 0)
             {
                 // If last character in string, print the new lines aswell
-                if (i == texts.Length - 1) { Print(texts[i], newLines, color, x, y); }
-                else { Print(texts[i], 0, color, x, y); }
+                if (i == texts.Length - 1) { MainConsole.Write(texts[i], newLines, color, x, y); }
+                else { MainConsole.Write(texts[i], 0, color, x, y); }
             }
             else // otherwise it's a color code
             {
@@ -229,7 +207,6 @@ class Program
             }
         }
     }
-
     static void CenterScreen(string title, string subtitle = "", int? time = null, string audioLocation = "")
     {
         Console.ForegroundColor = ConsoleColor.White;
@@ -255,7 +232,7 @@ class Program
         Console.SetCursorPosition((Console.WindowWidth) / 2, (Console.CursorTop + 2));
 
         // Music & wait for keypress
-        AudioFileReader? music = null;
+        WaveOutEvent? music = null;
         if (audioLocation != "")
         {
             music = AudioEngine.PlaySound(audioLocation);
@@ -268,7 +245,7 @@ class Program
             {
                 if (Console.KeyAvailable && Console.ReadKey(true).Key == ConsoleKey.Enter)
                 {
-                    if (music != null) { music.Dispose(); }
+                    if (music != null) { music.Stop(); music.Dispose(); }
                     break;
                 }
             }
@@ -276,7 +253,7 @@ class Program
     }
     public class EscapeException : Exception { }
     public class EnterException : Exception { }
-    static (int,int) HandleKeyPress(List<ConsoleMessage> inputString, ConsoleKeyInfo keyPressed, int margin, int xPos, int yPos)
+    static (int,int) HandleKeyPress(ConsoleLogs inputString, ConsoleKeyInfo keyPressed, int margin, int xPos, int yPos)
     {
         switch (keyPressed.Key)
         {
@@ -284,69 +261,62 @@ class Program
             case ConsoleKey.Enter: throw new EnterException();
             case ConsoleKey.Home: xPos = margin; break;
             case ConsoleKey.End: xPos = margin + inputString.Count; break;
-            case ConsoleKey.LeftArrow: xPos = (xPos == margin) ? xPos : xPos - 1; break; // Don't move back if at start of string
+            case ConsoleKey.LeftArrow: xPos = (xPos == margin) ? xPos : xPos - 1; break;                      // Don't move back if at start of string
             case ConsoleKey.RightArrow: xPos = (xPos == margin + inputString.Count) ? xPos : xPos + 1; break; // Don't move forward if at end of string
 
-            case ConsoleKey.Backspace: // Backspace is just move cursor back then delete
-                if (xPos != margin)
+            case ConsoleKey.Backspace: // Backspace is just a delete with the cursor moved back one
+                if (xPos != margin)   // If there is room to do so
                 {
-                    xPos--; keyPressed = new ConsoleKeyInfo('\b', ConsoleKey.Delete, false, false, false);
-                    HandleKeyPress(inputString, keyPressed, margin, xPos, yPos);
+                    keyPressed = new ConsoleKeyInfo('\0', ConsoleKey.Delete, false, false, false); xPos--; // Creating a delete keypress
+                    HandleKeyPress(inputString, keyPressed, margin, xPos, yPos);                           // Calling self to delete
                 }
                 break;
 
             case ConsoleKey.Delete:
                 if (xPos != margin + inputString.Count)
                 {
-                    ConsoleMessage removeMe = new ConsoleMessage { };
-                    foreach (ConsoleMessage message in inputString)
-                    {
-                        if (message.XVal > xPos) { message.XVal--; } // Move any letter to the right back by one
-                        else if (message.XVal == xPos) { removeMe = message; } // Find character to remove
-                    }
-                    inputString.Remove(removeMe);
-                    RefreshConsole(inputString);
+                    inputString.Remove(xPos, yPos);     // Remove character at cursor position
+                    inputString.Shift(xPos, yPos, -1);  // Shift everything to the right of the cursor back by one
+                    MainConsole.Refresh(inputString);   // Refresh screen
                 }
                 break;
 
             default:
-                string letter = keyPressed.KeyChar.ToString();
-                foreach (ConsoleMessage message in inputString)
+                if (!char.IsControl(keyPressed.KeyChar)) // if key pressed isnt a control key (only visible characters)
                 {
-                    if (message.XVal >= xPos) { message.XVal++; } // More any letter to the right along by one
+                    string letter = keyPressed.KeyChar.ToString();
+                    inputString.Shift(xPos, yPos, 1);                                                                       // Move everything infront of cursor to the right
+                    inputString.Log(new ConsoleMessage() { Contents = letter, XVal = xPos, YVal = yPos, NewLines = 0 });    // Log new character inputted
+                    xPos++;                                                                                                 // Move cursor one step forward
+                    MainConsole.Refresh(inputString);                                                                       // Refresh screen
                 }
-                inputString.Add(new ConsoleMessage() { Contents = letter, XVal = xPos, YVal = yPos, NewLines = 0 });
-                xPos++;
-                RefreshConsole(inputString);                          // Re-write screen including inputted letter
-                                                                 //Console.SetCursorPosition(x, y); break;
                 break;
         }
         return (xPos, yPos); // return new x and y co-ords
     }
     static string ReadChars()
     {
-        string input = string.Empty;
+        string output = string.Empty;
         bool complete = false;
         int startPoint = Console.CursorLeft; // so that cursor does not go beyond starting point of text
         int x = startPoint; int y = Console.CursorTop;
 
-        List<ConsoleMessage> InputHistory = new List<ConsoleMessage>();
+        ConsoleLogs input = new ConsoleLogs();
 
         while (!complete)
         {
             Console.SetCursorPosition(x, y);
             ConsoleKeyInfo keyPressed =  Console.ReadKey(true);
-            try { (x, y) = HandleKeyPress(InputHistory, keyPressed, startPoint, x, y); }
+            try { (x, y) = HandleKeyPress(input, keyPressed, startPoint, x, y); }
             catch (EnterException) { complete = true; }
         }
 
-
-        foreach (ConsoleMessage message in InputHistory)
+        foreach (ConsoleMessage message in input.History)
         {
-            input += message.Contents;
+            output += message.Contents;
         }
 
-        return input;
+        return output;
     }
     static int ReadInt(int xCoord = -1, int yCoord = -1)
     {
@@ -360,12 +330,16 @@ class Program
             }
             else
             {
-                RefreshConsole();
+                MainConsole.Refresh();
             }
         }
     }
 
+
+
     
+
+
     static void HexToDec()
     {
         string nums = "0123456789ABCDEF";
@@ -378,6 +352,7 @@ class Program
         int score = 0; int totalQuestions = 0; int percent = 0;
         int attempt = 0;
         bool GameLoop = true;
+        WaveOutEvent? sfx = null;
         Console.Clear();
 
 
@@ -389,39 +364,38 @@ class Program
             else                     { den = rand.Next(0,  10); } // 10% chance of easy hex digit
             hex = nums[den];
 
-            SPrint($@"§(7)What is §(9){hex}§(7) in decimal?", 4);
+            Print($@"§(7)What is §(9){hex}§(7) in decimal?", 4);
 
-            if (correct.HasValue) // it mustn't give a score until first question has veen answered.
+            if (correct.HasValue) // it mustn't give a score until first question has been answered.
             {
                 if (correct.Value)
                 {
                     score++;
-                    AudioEngine.PlaySound("correct.wav");
-                    SPrint($@"§(10)Correct! §(9){lastHex} §(10)= §(9){lastDen}§(10).", 2);
+                    sfx = AudioEngine.PlaySound("correct.wav");
+                    Print($@"§(10)Correct! §(9){lastHex} §(10)= §(9){lastDen}§(10).", 2);
                 }
                 else
                 {
-                    AudioEngine.PlaySound("incorrect.wav");
-                    SPrint($@"§(12)Incorrect. §(9){lastHex} §(12)= §(9){lastDen}§(12). (You entered {attempt})", 2);
+                    sfx = AudioEngine.PlaySound("incorrect.wav"); 
+                    Print($@"§(12)Incorrect. §(9){lastHex} §(12)= §(9){lastDen}§(12). (You entered {attempt})", 2);
                 }
 
                 percent = score * 100 / totalQuestions;
-                SPrint($@"§(7)Score: ", 0);
+                Print($@"§(7)Score: ", 0);
 
                 if (percent > 74)
                 {
-                    SPrint($@"§(10){score} / {totalQuestions} ({percent}%)§(7).", 2);
+                    Print($@"§(10){score} / {totalQuestions} ({percent}%)§(7).", 2);
                 }
                 else if (percent > 49)
                 {
-                    SPrint($@"§(6){score} / {totalQuestions} ({percent}%)§(7).", 2);
+                    Print($@"§(6){score} / {totalQuestions} ({percent}%)§(7).", 2);
                 }
                 else
                 {
-                    SPrint($@"§(12){score} / {totalQuestions} ({percent}%)§(7).", 2);
+                    Print($@"§(12){score} / {totalQuestions} ({percent}%)§(7).", 2);
                 }
             }
-
 
 
             try { attempt = ReadInt(0, 2); }
@@ -433,16 +407,18 @@ class Program
             totalQuestions++;
             lastDen = den;
             lastHex = hex;
+            if (sfx != null) { sfx.Stop(); sfx.Dispose(); }
         }
         return;
     }
+
     static void MainMenu()
     {
         MainConsole.Clear();
 
-        SPrint("HexerDexer", 2);
-        SPrint("1 §(9)Hex-Denary");
-        SPrint("2 §(10)Denary-Hex", 2);
+        Print("HexerDexer", 2);
+        Print("1 §(9)Hex-Denary");
+        Print("2 §(10)Denary-Hex", 2);
 
         int choice = 0;
         try { choice = ReadInt(); }
