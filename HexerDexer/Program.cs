@@ -1,18 +1,20 @@
 ﻿using System;
 using System.Drawing;
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Microsoft.VisualBasic;
 using NAudio;
+using NAudio.Codecs;
 using NAudio.Dmo;
 using NAudio.Wave;
 using static System.Net.Mime.MediaTypeNames;
 using static HexerDexer.Program;
 
-namespace HexerDexer;
 
+namespace HexerDexer;
 public class LoopStream : WaveStream
 {
     WaveStream sourceStream;
@@ -68,13 +70,12 @@ public class LoopStream : WaveStream
         return totalBytesRead;
     }
 }
+
 public class WavePlayer
 {
     WaveFileReader Reader;
     public WaveChannel32 Channel { get; set; }
-
     string FileName { get; set; }
-
     public WavePlayer(string FileName)
     {
         this.FileName = FileName;
@@ -82,7 +83,6 @@ public class WavePlayer
         var loop = new LoopStream(Reader);
         Channel = new WaveChannel32(loop) { PadWithZeroes = false };
     }
-
     public void Dispose()
     {
         if (Channel != null)
@@ -91,24 +91,75 @@ public class WavePlayer
             Reader.Dispose();
         }
     }
-
 }
+
 public class AudioEngine
 {
-    private static WaveOutEvent? MusicOutputDevice;
-    public static void PlayMusic(string audioLocation) // Only one music plays at a time
+    public static string[][] Tracks = new string[][] {
+        new string[5] {"001-guitar.wav",        // Hex -> Dec
+                       "002-bass.wav",
+                       "003-tambourine.wav",
+                       "004-atmpospherics.wav",
+                       "005-drums.wav" },
+        new string[7] {"song-001.wav",          // Dec -> Hex
+                       "song-002.wav",
+                       "song-003.wav",
+                       "song-004.wav",
+                       "song-005.wav",
+                       "song-006.wav",
+                       "song-007.wav" } };
+
+    private static List<WavePlayer> Music = new List<WavePlayer>();
+    private static DirectSoundOut MusicOutputDevice = new DirectSoundOut();
+    public static void PlayMusic(string[] tracks)
     {
-        WaveFileReader reader = new WaveFileReader(audioLocation);
-        LoopStream looper = new LoopStream(reader);
-        MusicOutputDevice = new WaveOutEvent();
-        MusicOutputDevice.Init(looper);             // And it loops
-        MusicOutputDevice.Play();
+        if (Music.Count == 0)
+        {
+            foreach (string track in tracks)
+            {
+                Music.Add(new WavePlayer(track));
+            }
+            MixingWaveProvider32 mixer = new MixingWaveProvider32(Music.Select(c => c.Channel));
+            MusicOutputDevice.Init(mixer);
+            MusicOutputDevice.Play();
+        }
+        else
+        {
+            MusicOutputDevice.Play();
+        }
     }
-    public static void StopMusic() // It is stopped with this function
+    public static void PlayMusic(string track) // overload for just one track
     {
-        MusicOutputDevice?.Stop();
-        MusicOutputDevice?.Dispose();
-        MusicOutputDevice = null;
+        if (Music.Count == 0)
+        {
+            Music.Add(new WavePlayer(track));
+            MixingWaveProvider32 mixer = new MixingWaveProvider32(Music.Select(c => c.Channel));
+            MusicOutputDevice.Init(mixer);
+            MusicOutputDevice.Play();
+        }
+        else
+        {
+            MusicOutputDevice.Play();
+        }
+    }
+    public static void SetVolume(int trackID, float volume)
+    {
+        Music[trackID].Channel.Volume = volume;
+    }
+    public static void PauseMusic()
+    {
+        MusicOutputDevice.Stop();
+    }
+    public static void StopMusic()
+    {
+        MusicOutputDevice.Stop();
+        foreach (WavePlayer track in Music)
+        {
+            track.Dispose();
+        }
+        Music.Clear();
+        MusicOutputDevice.Dispose();
+
     }
     public static WaveOutEvent PlaySound(string audioLocation) // Sounds are one-off
     {
@@ -120,14 +171,14 @@ public class AudioEngine
     }
 }
 
-
 class Program
 {
     public class ConsoleMessage
     {
         public string Contents { get; set; } = string.Empty;
-        public ConsoleColor Color { get; set; } = ConsoleColor.White;
         public int NewLines { get; set; } = 1;
+        public ConsoleColor Color { get; set; } = ConsoleColor.White;
+        public ConsoleColor Highlight { get; set; } = ConsoleColor.Black;
         public int XVal { get; set; } = 0;
         public int YVal { get; set; } = 0;
     }
@@ -166,6 +217,14 @@ class Program
         {
             TheConsole.Log(message);
         }
+        public static void Remove(ConsoleMessage message)
+        {
+            TheConsole.Remove(message.XVal, message.YVal);
+        }
+        public static void Remove(int x, int y)
+        {
+            TheConsole.Remove(x, y);
+        }
         public static void Clear()
         {
             TheConsole.Clear();
@@ -185,29 +244,31 @@ class Program
             foreach (var entry in messages)
             {
                 Console.ForegroundColor = entry.Color;                              // Set message color
+                Console.BackgroundColor = entry.Highlight;                          // Highlight text
                 Console.SetCursorPosition(entry.XVal, entry.YVal);                  // Set x & y cursor co-ordinates
                 Console.Write(entry.Contents);                                      // Write message contents
                 for (int i = 0; i < entry.NewLines; i++) { Console.WriteLine(""); } // Set-up any new lines required
             }
         }
-        public static void Write(string contents, int newLines = 1, ConsoleColor color = ConsoleColor.White, int x = -1, int y = -1)
+        public static void Write(string contents, int newLines, ConsoleColor color, ConsoleColor highlight, int x, int y)
         {
             // -1 x & y is default code for current cursor position.
             if (x == -1) { x = Console.CursorLeft; }
             if (y == -1) { y = Console.CursorTop; }
 
             // Log the chat message so it can be re-written if the chat is updated or reset
-            Log(new ConsoleMessage() { Contents = contents, NewLines = newLines, Color = color, XVal = x, YVal = y });
+            Log(new ConsoleMessage() { Contents = contents, NewLines = newLines, Color = color, Highlight = highlight, XVal = x, YVal = y });
 
             Console.ForegroundColor = color;
+            Console.BackgroundColor = highlight;
             Console.SetCursorPosition(x, y);
             Console.Write(contents);
             for (int i = 0; i < newLines; i++) { Console.WriteLine(""); }
         }
     }
 
-    // Print with colors  §(15) = White [default] §(0) = Black  || See Colors.md for codes ||
-    public static void Print(string contents, int newLines = 1, int x = -1, int y = -1)
+    // Print with multiple colors  §(15) = White [default] §(0) = Black  || See Colors.md for codes ||      [ONLY 1 HIGHLIGHT]
+    public static void Print(string contents, int newLines = 1, int x = -1, int y = -1, ConsoleColor highlight = ConsoleColor.Black)
     {
         ConsoleColor color = ConsoleColor.White;
         Regex rx = new Regex(@"\§\((\d+)\)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -220,8 +281,8 @@ class Program
             if (i % 2 == 0)
             {
                 // If last character in string, print the new lines aswell
-                if (i == texts.Length - 1) { MainConsole.Write(texts[i], newLines, color, x, y); }
-                else { MainConsole.Write(texts[i], 0, color, x, y); }
+                if (i == texts.Length - 1) { MainConsole.Write(texts[i], newLines, color, highlight, x, y); }
+                else { MainConsole.Write(texts[i], 0, color, highlight, x, y); }
             }
             else // otherwise it's a color code
             {
@@ -232,6 +293,7 @@ class Program
     static void CenterScreen(string title, string subtitle = "", int? time = null, string audioLocation = "")
     {
         Console.ForegroundColor = ConsoleColor.White;
+        Console.BackgroundColor = ConsoleColor.Black;
         Console.Clear();
 
         // Margin-top
@@ -254,10 +316,9 @@ class Program
         Console.SetCursorPosition((Console.WindowWidth) / 2, (Console.CursorTop + 2));
 
         // Music & wait for keypress
-        WaveOutEvent? music = null;
         if (audioLocation != "")
         {
-            music = AudioEngine.PlaySound(audioLocation);
+            AudioEngine.PlayMusic(audioLocation);
         }
 
         if (time.HasValue) { System.Threading.Thread.Sleep(time.Value); }
@@ -267,7 +328,7 @@ class Program
             {
                 if (Console.KeyAvailable && Console.ReadKey(true).Key == ConsoleKey.Enter)
                 {
-                    if (music != null) { music.Stop(); music.Dispose(); }
+                    AudioEngine.StopMusic();
                     break;
                 }
             }
@@ -364,7 +425,7 @@ class Program
             Print("> ", newLines: 0, x: xCoord, y: yCoord);
             string uInput = ReadChars();
             int len = uInput.Length;
-            if (0 < len && len <= maxLength && maxLength != -1) // insert more logical checks like is alphanumeric
+            if (0 < len && (len <= maxLength || maxLength == -1)) // insert more logical checks like is alphanumeric
             {
                 return uInput;
             }
@@ -374,206 +435,189 @@ class Program
             }
         }
     }
-
-
-
-    static void HexToDec()
+    enum Mode
     {
-        string nums = "0123456789ABCDEF";
-        Random rand = new Random();
-        AudioEngine.PlayMusic("bg-music.wav");
-
-        bool? correct = null;
-        int den;     char hex;
-        int lastDen = 0; char lastHex = '0';
-        int score = 0; int totalQuestions = 0; int percent = 0;
-        int attempt = 0;
-        bool GameLoop = true;
-        WaveOutEvent? sfx = null;
-        Console.Clear();
-
-
-        while (GameLoop)
+        HexToDec,
+        DecToHex,
+    }
+    class Problem
+    {
+        private int Number { get; }
+        public Mode Mode { get; }
+        public string Question { get => Number.ToString(Mode == Mode.DecToHex ? "" : "X"); }
+        public string Answer { get => Number.ToString(Mode == Mode.DecToHex ? "X" : ""); }
+        public string TargetNumberSystem { get => Mode == Mode.DecToHex ? "hexadecimal" : "decimal"; }
+        public Problem() : this(Random.Shared.Next(20), (Mode)Random.Shared.Next(2)) {} // completely random question with random mode
+        public Problem(int digits, Mode mode)
         {
-            MainConsole.Clear();
-
-            if (rand.Next(0,10) < 9) { den = rand.Next(10, 16); } // 90% chance of hard hex digit
-            else                     { den = rand.Next(0,  10); } // 10% chance of easy hex digit
-            hex = nums[den];
-
-            Print($@"§(7)What is §(9){hex}§(7) in decimal?", 4);
-
-            if (correct.HasValue) // it mustn't give a score until first question has been answered.
+            this.Mode = mode;
+            int _base = (mode == Mode.DecToHex) ? 10 : 16;
+            if (digits == 1)
             {
-                if (correct.Value)
-                {
-                    score++;
-                    sfx = AudioEngine.PlaySound("correct.wav");
-                    Print($@"§(10)Correct! §(9){lastHex} §(10)= §(9){lastDen}§(10).", 2);
-                }
-                else
-                {
-                    sfx = AudioEngine.PlaySound("incorrect.wav"); 
-                    Print($@"§(12)Incorrect. §(9){lastHex} §(12)= §(9){lastDen}§(12). (You entered {attempt})", 2);
-                }
-
-                percent = score * 100 / totalQuestions;
-                Print($@"§(7)Score: ", 0);
-
-                if (percent > 74)
-                {
-                    Print($@"§(10){score} / {totalQuestions} ({percent}%)§(7).", 2);
-                }
-                else if (percent > 49)
-                {
-                    Print($@"§(6){score} / {totalQuestions} ({percent}%)§(7).", 2);
-                }
-                else
-                {
-                    Print($@"§(12){score} / {totalQuestions} ({percent}%)§(7).", 2);
-                }
+                if (Random.Shared.Next(0, 10) < 9) { this.Number = Random.Shared.Next(10, 16); } // 90% chance of hard digit
+                else { this.Number = Random.Shared.Next(0, 10); }                                // 10% chance of easy digit
             }
-
-
-            try { attempt = ReadInt(0, 2); }
-            catch (EscapeException) { AudioEngine.StopMusic(); GameLoop = false; }
-            
-            if (attempt == den) { correct = true; }
-            else { correct = false; }
-
-            totalQuestions++;
-            lastDen = den;
-            lastHex = hex;
-            if (sfx != null) { sfx.Stop(); sfx.Dispose(); }
+            else
+            {
+                this.Number = Random.Shared.Next((int)Math.Pow(_base, digits - 1), (int)Math.Pow(_base, digits));
+            }
         }
-        return;
     }
 
-
-
-    static void DecToHex()
+    static void HexDex(Mode gameMode)
     {
-        string nums = "0123456789ABCDEF";
-        Random rand = new Random();
+        // Custom Options
+        string[] customOptions = GameOptions();
+        int digits = int.Parse(customOptions[0]);
 
-        List<WavePlayer> Music = new List<WavePlayer>();
-        DirectSoundOut audioOutput = new DirectSoundOut();
-
-        string[] tracks = new string[] { "001-guitar.wav",
-                                         "002-bass.wav",
-                                         "003-tambourine.wav",
-                                         "004-atmpospherics.wav",
-                                         "005-drums.wav" };
-        foreach (string track in tracks)
-        {
-            Music.Add(new WavePlayer(track));
-        }
-
-        var mixer = new MixingWaveProvider32(Music.Select(c => c.Channel));
-        audioOutput.Init(mixer);
-        audioOutput.Play();
-
-        Music[0].Channel.Volume = 0.5f;
-        Music[1].Channel.Volume = 0;
-        Music[2].Channel.Volume = 0;
-        Music[3].Channel.Volume = 0;
-        Music[4].Channel.Volume = 0;
-
-        int musicCount = 1;
-
+        // Initialising
         bool? correct = null;
-        int dec; char hex;
-        int lastDec = 0; char lastHex = '0';
-        int score = 0; int totalQuestions = 0; int percent = 0;
-        char attempt = '0';
-        bool GameLoop = true;
+        Problem problem; Problem? lastProblem = null;
+        int score = 0; int totalQuestions = 0; int percent;
+        string attempt = "";
+        int musicCount = 1;
         WaveOutEvent? sfx = null;
-        Console.Clear();
+        string[] tracks = AudioEngine.Tracks[(int)gameMode];
 
+        AudioEngine.PlayMusic(tracks);
 
+        bool GameLoop = true;
         while (GameLoop)
         {
             MainConsole.Clear();
 
-            for (int i = 0; i < 5; i++)
+            // Track volume based on score, +1 track when you're correct, back to 0 if you fail
+            for (int i = 0; i < tracks.Length; i++)
             {
-                Music[i].Channel.Volume = (i < musicCount) ? 0.2f : 0;
+                AudioEngine.SetVolume(i, (i < musicCount) ? 1 : 0);
             }
 
-            if (rand.Next(0, 10) < 9) { dec = rand.Next(10, 16); } // 90% chance of hard den digit
-            else { dec = rand.Next(0, 10); }                       // 10% chance of easy den digit
-            hex = nums[dec];
+            problem = new Problem(digits, gameMode);
+            Print($@"§(7)What is §(9){problem.Question}§(7) in {problem.TargetNumberSystem}?", 4);
 
-            Print($@"§(7)What is §(9){dec}§(7) in hexadecimal?", 4);
-
+            // Feedback on user's answer
             if (correct.HasValue) // it mustn't give a score until first question has been answered.
             {
+                // Marking their answer
                 if (correct.Value)
                 {
                     score++;
                     sfx = AudioEngine.PlaySound("correct.wav");
-                    Print($@"§(10)Correct! §(9){lastDec} §(10)= §(9){lastHex}§(10).", 2);
+                    Print($@"§(10)Correct! §(9){lastProblem?.Question} §(10)= §(9){lastProblem?.Answer}§(10).", 2);
                 }
                 else
                 {
                     sfx = AudioEngine.PlaySound("incorrect.wav");
-                    Print($@"§(12)Incorrect. §(9){lastDec} §(12)= §(9){lastHex}§(12). (You entered {attempt})", 2);
+                    Print($@"§(12)Incorrect. §(9){lastProblem?.Question} §(12)= §(9){lastProblem?.Answer}§(12). (You entered {attempt})", 2);
                 }
 
+                // Score roundup
                 percent = score * 100 / totalQuestions;
                 Print($@"§(7)Score: ", 0);
+                string scoreRoundup = $"{score} / {totalQuestions} ({percent}%)";
 
                 if (percent > 74)
                 {
-                    Print($@"§(10){score} / {totalQuestions} ({percent}%)§(7).", 2);
+                    Print($@"§(10){scoreRoundup}§(7).", 2);
                 }
                 else if (percent > 49)
                 {
-                    Print($@"§(6){score} / {totalQuestions} ({percent}%)§(7).", 2);
+                    Print($@"§(6){scoreRoundup}§(7).", 2);
                 }
                 else
                 {
-                    Print($@"§(12){score} / {totalQuestions} ({percent}%)§(7).", 2);
+                    Print($@"§(12){scoreRoundup}§(7).", 2);
                 }
             }
 
-            try { attempt = ReadStr(0, 2, 1).ToUpper()[0]; }
-            catch (EscapeException) { audioOutput.Stop(); audioOutput.Dispose(); GameLoop = false; }
+            // Read user's attempt
+            try { attempt = ReadStr(0, 2).ToUpper(); }
+            catch (EscapeException) { AudioEngine.StopMusic(); GameLoop = false; }
 
-            if (attempt == hex) { correct = true; musicCount = (musicCount < 6) ? musicCount + 1 : musicCount; }
+            // Determine if it's correct
+            if (attempt == problem.Answer) { correct = true; musicCount = (musicCount <= tracks.Length) ? musicCount + 1 : musicCount; }
             else { correct = false; musicCount = 1; }
 
+
             totalQuestions++;
-            lastDec = dec;
-            lastHex = hex;
+            lastProblem = problem;
             if (sfx != null) { sfx.Stop(); sfx.Dispose(); }
         }
         return;
     }
 
+    static string[] GameOptions()
+    {
+        MainConsole.Clear();
+        string[] options = new string[1];
+
+        Print("Hex-Dex", 2);
+        Print("How many digits do you want?", 2);
+        Print(" > ", 0); Print("1", 0, highlight:ConsoleColor.DarkGray); Print(" < ");
+
+        int num = 1;
+        bool chosen = false;
+        while (!chosen)
+        {
+            Console.CursorVisible = false;
+            switch (Console.ReadKey(true).Key)
+            {
+                case ConsoleKey.UpArrow: if (num < 9) { num++; }; break;
+                case ConsoleKey.DownArrow: if (num > 1) { num--; } break;
+                case ConsoleKey.Enter: chosen = true; break;
+            }
+            MainConsole.Remove(3, 4);
+            Print($"{num}", 0, 3, 4, ConsoleColor.DarkGray);
+        }
+        options[0] = num.ToString();
+        Console.CursorVisible = true;
+        Console.BackgroundColor = ConsoleColor.Black;
+
+        return options;
+    }
 
     static void MainMenu()
     {
         MainConsole.Clear();
 
         Print("HexerDexer", 2);
-        Print("1 §(9)Hex-Dex");
-        Print("2 §(10)Dex-Hex", 2);
+        Print("1 §(9)Hex -> Dex");
+        Print("2 §(10)Dex -> Hex", 2);
 
         int choice = 0;
         try { choice = ReadInt(); }
-        catch (EscapeException) { System.Environment.Exit(1); }
+        catch (EscapeException) { Environment.Exit(1); }
 
         switch (choice)
         {
-            case 1: HexToDec(); break;
-            case 2: DecToHex(); break;
+            case 1: HexDex(Mode.HexToDec); break;
+            case 2: HexDex(Mode.DecToHex); break;
         }
     }
     
+    static void Intro()
+    {
+        WaveOutEvent music = AudioEngine.PlaySound("intro.wav");
+        string msg1 = "Loading";
+        string msg2 = "...";
+        string msg3 = "Starting HexerDexer";
+        Thread.Sleep(1000);
+        foreach (char letter in msg1) { Console.Write(letter); Thread.Sleep(400); }
+        Thread.Sleep(1000);
+        foreach (char letter in msg2) { Console.Write(letter); Thread.Sleep(1000); }
+        Thread.Sleep(3000); Console.WriteLine(""); Thread.Sleep(1000);
+        foreach (char letter in msg3) { Console.Write(letter); Thread.Sleep(120); }
+
+        while (music.PlaybackState == PlaybackState.Playing)
+        {
+            Thread.Sleep(1000);
+        }
+
+    }
     static void Main(string[] args)
     {
-        CenterScreen("HexerDexer", "Press ENTER to start", audioLocation: "intro.wav");
+        Intro();
+        CenterScreen("HexerDexer", "Press ENTER to start", audioLocation: "bg-music.wav");
         while (true) { MainMenu(); }
     }
 }
